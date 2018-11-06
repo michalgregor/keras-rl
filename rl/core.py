@@ -171,6 +171,7 @@ class Agent(object):
                     action = self.processor.process_action(action)
                 reward = np.float32(0)
                 accumulated_info = {}
+                raw_info = []
                 done = False
                 for _ in range(action_repetition):
                     callbacks.on_action_begin(action)
@@ -178,6 +179,7 @@ class Agent(object):
                     observation = deepcopy(observation)
                     if self.processor is not None:
                         observation, r, done, info = self.processor.process_step(observation, r, done, info)
+                    raw_info.append(info)
                     for key, value in info.items():
                         if not np.isreal(value):
                             continue
@@ -201,6 +203,7 @@ class Agent(object):
                     'metrics': metrics,
                     'episode': episode,
                     'info': accumulated_info,
+                    'raw_info': raw_info
                 }
                 callbacks.on_step_end(episode_step, step_logs)
                 episode_step += 1
