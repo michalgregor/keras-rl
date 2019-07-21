@@ -2,6 +2,7 @@
 import warnings
 from copy import deepcopy
 
+import inspect
 import numpy as np
 from keras.callbacks import History
 
@@ -95,6 +96,7 @@ class Agent(object):
 
         self.training = True
 
+        backward = self.__wrap_backward__()
         callbacks = [] if not callbacks else callbacks[:]
 
         if verbose == 1:
@@ -201,7 +203,7 @@ class Agent(object):
                 if nb_max_episode_steps and episode_step >= nb_max_episode_steps - 1:
                     # Force a terminal state.
                     done = True
-                metrics = self.backward(reward, terminal=done)
+                metrics = backward(reward, terminal=done, next_observation=observation)
                 episode_reward += reward
 
                 step_logs = {
@@ -224,7 +226,7 @@ class Agent(object):
                     # the *next* state, that is the state of the newly reset environment, is
                     # always non-terminal by convention.
                     self.forward(observation)
-                    self.backward(0., terminal=False)
+                    backward(0., terminal=False, next_observation=None)
 
                     # This episode is finished, report and reset.
                     episode_logs = {
@@ -238,10 +240,10 @@ class Agent(object):
                     observation = None
                     episode_step = None
                     episode_reward = None
-
+                    
                     if nb_max_episodes and episode >= nb_max_episodes:
                         break
-
+                    
         except KeyboardInterrupt:
             # We catch keyboard interrupts here so that training can be be safely aborted.
             # This is so common that we've built this right into this function, which ensures that
@@ -290,6 +292,7 @@ class Agent(object):
         self.training = False
         self.step = 0
 
+        backward = self.__wrap_backward__()
         callbacks = [] if not callbacks else callbacks[:]
 
         if verbose >= 1:
@@ -305,7 +308,7 @@ class Agent(object):
             callbacks._set_model(self)
         callbacks._set_env(env)
         params = {
-            'nb_episodes': nb_episodes,
+            'nb_episodes': nb_episodes
         }
         if hasattr(callbacks, 'set_params'):
             callbacks.set_params(params)
@@ -378,7 +381,7 @@ class Agent(object):
                         break
                 if nb_max_episode_steps and episode_step >= nb_max_episode_steps - 1:
                     done = True
-                self.backward(reward, terminal=done)
+                backward(reward, terminal=done, next_observation=observation)
                 episode_reward += reward
 
                 step_logs = {
@@ -398,7 +401,7 @@ class Agent(object):
             # the *next* state, that is the state of the newly reset environment, is
             # always non-terminal by convention.
             self.forward(observation)
-            self.backward(0., terminal=False)
+            backward(0., terminal=False, next_observation=None)
 
             # Report end of episode.
             episode_logs = {
@@ -428,13 +431,21 @@ class Agent(object):
         """
         raise NotImplementedError()
 
-    def backward(self, reward, terminal):
+    def __wrap_backward__(self):
+        if(len(inspect.getfullargspec(self.backward).args) == 4):
+            return self.backward
+        else:
+            return lambda reward, terminal, next_observation: \
+                self.backward(reward, terminal)
+
+    def backward(self, reward, terminal, next_observation):
         """Updates the agent after having executed the action returned by `forward`.
         If the policy is implemented by a neural network, this corresponds to a weight update using back-prop.
 
         # Argument
             reward (float): The observed reward after executing the action returned by `forward`.
             terminal (boolean): `True` if the new state of the environment is terminal.
+            next_observation (object): Observation of the next state of the environment.
 
         # Returns
             List of metrics values
@@ -582,7 +593,7 @@ class Processor(object):
         # Arguments
             action (int): Action given to the environment
 
-        # Returns
+        # Returns
             Processed action given to the environment
         """
         return action
@@ -629,8 +640,8 @@ class Env(object):
 
     - `step`
     - `reset`
-    - `render`
-    - `close`
+    - `render`
+    - `close`
 
     Refer to the [Gym documentation](https://gym.openai.com/docs/#environments).
     """
